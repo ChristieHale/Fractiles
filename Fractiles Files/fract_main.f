@@ -2,10 +2,10 @@
 
 c     This  program will compute the fractiles from a seismic hazard
 c     run. This version of the program works with the seismic hazard
-c     code version 45.3. The fractiles are computed based on
+c     code version 45.4. The fractiles are computed based on
 c     a Monte Carlo simulation.
 
-c     compatible with Haz45.3
+c     compatible with Haz45.4 (and the 45.1 - 45.3 fault file formats)
 
       implicit none
       include 'fract.h'
@@ -309,8 +309,8 @@ c     Open output file
 
 C     Check for version compatibility with hazard code
       read (nwr,*) version
-      if (version .ne. 45.3) then
-        write (*,*) 'Incompatible version of Haz45, use Haz45.3'
+      if (version .ne. 45.3 .and. version .ne. 45.4) then
+        write (*,*) 'Incompatible version of Haz45, use Haz45.4 or Haz45.3'
         stop 99
       endif
 

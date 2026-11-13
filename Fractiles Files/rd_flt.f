@@ -17,12 +17,14 @@
           call Rd_Fault_Data_45_1 (nFltTotal,nFlt0, cumWt_segModel, cumWt_param,
      1           cumWt_width, probAct, nParamVar, AttenType, cumwt_Ftype,
      2           nFtype, nWidth, nSegModel, f_start, f_num, faultFlag, al_Segwt )
-        elseif (version .eq. 45.2 .or. version .eq. 45.3) then
+        elseif (version .eq. 45.2 .or. version .eq. 45.3
+     1          .or. version .eq. 45.4) then
           call Rd_Fault_Data_45_2 (nFltTotal,nFlt0, cumWt_segModel, cumWt_param,
      1           cumWt_width, probAct, nParamVar, AttenType, cumwt_Ftype,
-     2           nFtype, nWidth, nSegModel, f_start, f_num, faultFlag, al_Segwt )
+     2           nFtype, nWidth, nSegModel, f_start, f_num, faultFlag, al_Segwt,
+     3           version )
         else
-          write (*,*) 'Incompatible fault file, use Haz45.3, Haz45.2, or Haz45.1'
+          write (*,*) 'Incompatible fault file, use Haz45.4, Haz45.3, Haz45.2, or Haz45.1'
           stop 99
         endif
 
@@ -403,10 +405,17 @@ c ----------------------------------------------------------------------
 
       subroutine Rd_Fault_Data_45_2 (nFltTotal,nFlt0, cumWt_segModel, cumWt_param,
      1           cumWt_width, probAct, nParamVar, AttenType, cumwt_Ftype,
-     2           nFtype, nWidth, nSegModel, f_start, f_num, faultFlag, al_Segwt )
+     2           nFtype, nWidth, nSegModel, f_start, f_num, faultFlag, al_Segwt,
+     3           version )
+
+c     Reads the 45.2, 45.3, and 45.4 fault file formats. The 45.4 format adds
+c     the max distance type (1 or 2) after the source type.
 
       implicit none
       include 'fract.h'
+
+      integer MaxDistType
+      real version
 
       integer nWidth(MAX_FLT), nParamVar(MAX_FLT,MAX_WIDTH), Attentype(MAX_FLT),
      1        nFlt0, nFlt2, nFm, nFtypeModels(MAX_FLT), nFtype1(MAXPARAM),
@@ -481,7 +490,17 @@ C.......Loop over number of individual fault segments....
 
 c         Read past name of this segment
           read(10,'( a80)') fname
-          read (10,*) isourceType, attenType(iFlt), sampleStep, directflag, synflag
+          if ( version .eq. 45.4 ) then
+            read (10,*) isourceType, MaxDistType, attenType(iFlt), sampleStep,
+     1                  directflag, synflag
+            if ( MaxDistType .ne. 1 .and. MaxDistType .ne. 2 ) then
+              write (*,'( 2x,''Flt file error: max distance type must be 1 or 2'')')
+              write (*,'( 2x,''From fault segment: '',a80)') fname
+              stop 99
+            endif
+          else
+            read (10,*) isourceType, attenType(iFlt), sampleStep, directflag, synflag
+          endif
 
           write (*,'( 2x,''iFlt'',i5, 2x,a80)') iFlt, fname
 

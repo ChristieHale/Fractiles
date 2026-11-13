@@ -33,13 +33,16 @@ c     Open Input PSHA Source/Fault file
 
 C     Check for version compatibility with hazard code
         read (20,*) version
-         if (version .ne. 45.3 .and. version .ne. 45.2 .and. version .ne. 45.1) then
-         write (*,*) 'Hazard faultfile format incompatible, use Haz45.3, Haz45.2, or Haz45.1'
+         if (version .ne. 45.4 .and. version .ne. 45.3 .and.
+     1       version .ne. 45.2 .and. version .ne. 45.1) then
+         write (*,*) 'Hazard faultfile format incompatible, use Haz45.4, Haz45.3, Haz45.2, or Haz45.1'
          stop 99
         endif
 
 c     Read in parameters for background grid.
       read (20,*) dummy
+c     Read past the max distance line (Haz45.4 allows one or two max distances
+c     on this line; only the first value is read and the rest is skipped)
       read (20,*) dummy
 
 c     Input Title (not used)
