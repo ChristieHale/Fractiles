@@ -36,8 +36,9 @@ c     compatible with Haz45.4 (and the 45.1 - 45.3 fault file formats)
 
       write (*,*) '**********************************'
       write (*,*) '*         Fractiles Code         *'
-      write (*,*) '*          Release 45.3          *'
-      write (*,*) '*           March, 2023          *'
+      write (*,*) '*          Release 45.4          *'
+      write (*,*) '*        Under Development       *'
+      write (*,*) '*          October 2026          *'
       write (*,*) '**********************************'
 
 c     Open and read the run file
