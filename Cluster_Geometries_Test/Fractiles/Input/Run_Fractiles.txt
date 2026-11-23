@@ -1,0 +1,11 @@
+5431		iseed
+55000		nSample
+2		nPer
+2  1.E-3  1.E-4	nHazLevel, HazLevels
+Fract_TC_Cluster_Site1.out
+1		Period (PGA)
+Run_TC_Cluster.txt
+TC_Cluster_Site1.out1
+2		Period (1.0 s)
+Run_TC_Cluster.txt
+TC_Cluster_Site1.out1

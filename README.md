@@ -31,14 +31,17 @@ level there.
 
 ## Clustered sequences (source type 8)
 
-A cluster member is read as source type 1. HAZ writes the cluster's branch
-curves in the first member's out1 block and zeros in the other members'
-blocks, so the cluster is sampled as one source.
+A cluster member is read as source type 1. In out1, HAZ writes zeros in the
+members' blocks and, after the last member, the cluster's branch curves for
+each segmentation model of its fault system (for example each combination of
+alternative geometries), numbered after the last source. The program samples
+the cluster as one source: it draws a segmentation model and one branch (the
+members' branches are matched by index), and adds that curve.
 
 ## Tests
 
-`Reference_Test`, `PEER_Verification_Test`, `Cluster_Test` and
-`Source_Types_Test` each hold a Hazard case (HAZ inputs and outputs) and a
+`Reference_Test`, `PEER_Verification_Test`, `Cluster_Test`,
+`Cluster_Geometries_Test` and `Source_Types_Test` each hold a Hazard case (HAZ inputs and outputs) and a
 Fractiles case. From `scripts/`:
 
 ```

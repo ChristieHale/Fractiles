@@ -1,14 +1,19 @@
 
       subroutine Rd_Fault_Data (version, nFltTotal,nFlt0, cumWt_segModel, cumWt_param,
      1           cumWt_width, probAct, nParamVar, AttenType, cumwt_Ftype,
-     2           nFtype, nWidth, nSegModel, f_start, f_num, faultFlag, al_Segwt )
+     2           nFtype, nWidth, nSegModel, f_start, f_num, faultFlag, al_Segwt,
+     3           clusterSeg )
+
+c     clusterSeg(iFlt) is 1 for a member of a clustered sequence (source
+c     type 8, read as type 1) and 0 otherwise.
 
       implicit none
       include 'fract.h'
 
       integer nWidth(MAX_FLT), nParamVar(MAX_FLT,MAX_WIDTH), Attentype(MAX_FLT),
      1        nFlt0, nFtype(MAX_FLT), faultflag(MAX_FLT,MAX_SEGMOD,MAX_SEG),
-     2        f_start(MAX_FLT), f_num(MAX_FLT), nSegModel(MAX_FLT), nFltTotal
+     2        f_start(MAX_FLT), f_num(MAX_FLT), nSegModel(MAX_FLT), nFltTotal,
+     3        clusterSeg(MAX_FLT)
       real al_segWt(MAX_FLT), cumWt_segModel(MAX_FLT,MAX_SEGMOD), version,
      1     cumWt_param(MAX_FLT,MAX_WIDTH,MAXPARAM), ProbAct(MAX_FLT),
      2     cumWt_width(MAX_FLT,MAX_WIDTH), cumwt_Ftype(MAX_FLT,MAXPARAM)
@@ -16,13 +21,14 @@
         if (version .eq. 45.1) then
           call Rd_Fault_Data_45_1 (nFltTotal,nFlt0, cumWt_segModel, cumWt_param,
      1           cumWt_width, probAct, nParamVar, AttenType, cumwt_Ftype,
-     2           nFtype, nWidth, nSegModel, f_start, f_num, faultFlag, al_Segwt )
+     2           nFtype, nWidth, nSegModel, f_start, f_num, faultFlag, al_Segwt,
+     3           clusterSeg )
         elseif (version .eq. 45.2 .or. version .eq. 45.3
      1          .or. version .eq. 45.4) then
           call Rd_Fault_Data_45_2 (nFltTotal,nFlt0, cumWt_segModel, cumWt_param,
      1           cumWt_width, probAct, nParamVar, AttenType, cumwt_Ftype,
      2           nFtype, nWidth, nSegModel, f_start, f_num, faultFlag, al_Segwt,
-     3           version )
+     3           version, clusterSeg )
         else
           write (*,*) 'Incompatible fault file, use Haz45.4, Haz45.3, Haz45.2, or Haz45.1'
           stop 99
@@ -35,7 +41,8 @@ c ----------------------------------------------------------------------
 
       subroutine Rd_Fault_Data_45_1 (nFltTotal,nFlt0, cumWt_segModel, cumWt_param,
      1           cumWt_width, probAct, nParamVar, AttenType, cumwt_Ftype,
-     2           nFtype, nWidth, nSegModel, f_start, f_num, faultFlag, al_Segwt )
+     2           nFtype, nWidth, nSegModel, f_start, f_num, faultFlag, al_Segwt,
+     3           clusterSeg )
 
       implicit none
       include 'fract.h'
@@ -45,6 +52,7 @@ c ----------------------------------------------------------------------
      2        nThick1(MAX_FLT), iOverRideMag, directflag, synflag,
      3        nSR, nActRAte, nRecInt, n_Dip(MAX_FLT), nRefMag(MAX_WIDTH),
      4        nFtype(MAX_FLT), faultflag(MAX_FLT,MAX_SEGMOD,MAX_SEG)
+      integer clusterSeg(MAX_FLT)
       integer f_start(MAX_FLT), f_num(MAX_FLT), nSegModel(MAX_FLT), iWidth, iDip,
      1        iflt, iflt0, iflt2, k, i, iCoor, isourceType, i_bValue, nb1,
      2        iRate, i1, iFM, nRupArea, nRupWidth, iThick, iThick1, nMoRate,
@@ -114,6 +122,7 @@ C.......Loop over number of individual fault segments....
 c         Read past name of this segment
           read(10,'( a80)') fname
           read (10,*) isourceType, attenType(iFlt), sampleStep, directflag, synflag
+          clusterSeg(iFlt) = 0
           if ( isourceType .eq. 8 ) then
             write (*,'( 2x,''Flt file error: source type 8 (clustered sequence) needs the 45.4 fault file format'')')
             write (*,'( 2x,''From fault segment: '',a80)') fname
@@ -411,7 +420,7 @@ c ----------------------------------------------------------------------
       subroutine Rd_Fault_Data_45_2 (nFltTotal,nFlt0, cumWt_segModel, cumWt_param,
      1           cumWt_width, probAct, nParamVar, AttenType, cumwt_Ftype,
      2           nFtype, nWidth, nSegModel, f_start, f_num, faultFlag, al_Segwt,
-     3           version )
+     3           version, clusterSeg )
 
 c     Reads the 45.2, 45.3, and 45.4 fault file formats. The 45.4 format adds
 c     the max distance type (1 or 2) after the source type.
@@ -427,6 +436,7 @@ c     the max distance type (1 or 2) after the source type.
      2        nThick1(MAX_FLT), directflag, synflag, nFtype(MAX_FLT),
      3        nSR, nActRAte, nRecInt, n_Dip(MAX_FLT), nRefMag(MAX_WIDTH),
      4        faultflag(MAX_FLT,MAX_SEGMOD,MAX_SEG), nsyn, nFltTotal
+      integer clusterSeg(MAX_FLT)
       integer f_start(MAX_FLT), f_num(MAX_FLT), nSegModel(MAX_FLT), iWidth, iDip,
      1        iRefMag, iDepthModel, nfp, ii, ipt, nDownDip, insyn, iRecur,
      2        iflt, iflt0, iflt2, k, i, iCoor, isourceType, i_bValue, nb1,
@@ -508,10 +518,12 @@ c         Read past name of this segment
           endif
 
 c         Source type 8 is a member of a clustered earthquake sequence. Its input
-c         is the same as source type 1. HAZ writes the cluster's branch curves in
-c         the first member's out1 block and zeros in the other members' blocks,
-c         so the cluster is sampled as one source.
+c         is the same as source type 1. In out1, HAZ writes zeros in the members'
+c         blocks and the cluster's branch curves after the last member, one set
+c         for each segmentation model (see Set_Cluster_Sources).
+          clusterSeg(iFlt) = 0
           if ( isourceType .eq. 8 ) then
+            clusterSeg(iFlt) = 1
             if ( version .ne. 45.4 ) then
               write (*,'( 2x,''Flt file error: source type 8 (clustered sequence) needs the 45.4 fault file format'')')
               write (*,'( 2x,''From fault segment: '',a80)') fname
@@ -799,6 +811,92 @@ c       End of Loop over iFlt2 - number of segments
 c     End of Loop over iFlt
       enddo
       nFltTotal = iFlt
+
+      return
+      end
+
+c ----------------------------------------------------------------------
+
+      subroutine Set_Cluster_Sources ( nFlt, nFlt0, f_start, f_num, nSegModel,
+     1           clusterSeg, nWidth, nParamVar, nFtype, attenType, cumWt_param,
+     2           cumWt_width, cumWt_Ftype, al_segwt, clusterSys, vStart,
+     3           nFltAll, readOrder )
+
+c     Clustered sequences (source type 8). A cluster is a fault system whose
+c     segments are its members. In out1, HAZ writes zeros in the members'
+c     blocks, then, right after the last member, one set of blocks for each
+c     segmentation model s of the fault system, holding the cluster's curve on
+c     every branch for that model. The source number of the set in the block
+c     header is nFlt + 1, nFlt + 2, ... in the order the sets are written.
+c
+c     This routine numbers those sets as extra sources nFlt+1 ... nFltAll,
+c     gives them the branches and weights of the cluster's first member (every
+c     member has the same branches, matched by index), and sets the order in
+c     which out1 holds the blocks. In the sampling, the cluster is one source:
+c     draw a segmentation model s, then one branch, and add the curve of
+c     source vStart(iFlt0) + s - 1.
+
+      implicit none
+      include 'fract.h'
+
+      integer nFlt, nFlt0, f_start(MAX_FLT), f_num(MAX_FLT), nSegModel(MAX_FLT),
+     1        clusterSeg(MAX_FLT), nWidth(MAX_FLT), nParamVar(MAX_FLT,MAX_WIDTH),
+     2        nFtype(MAX_FLT), attenType(MAX_FLT), clusterSys(MAX_FLT),
+     3        vStart(MAX_FLT), nFltAll, readOrder(MAX_FLT)
+      real cumWt_param(MAX_FLT,MAX_WIDTH,MAXPARAM), cumWt_width(MAX_FLT,MAX_WIDTH),
+     1     cumWt_Ftype(MAX_FLT,MAXPARAM), al_segwt(MAX_FLT)
+
+      integer iFlt0, iFlt, i1, iSeg, v, nRead, iWidth, i, nClus
+
+      nFltAll = nFlt
+      nRead = 0
+      do iFlt0=1,nFlt0
+        i1 = f_start(iFlt0)
+
+c       A fault system is a cluster if its segments are type 8 (all of them)
+        nClus = 0
+        do iFlt=i1,i1+f_num(iFlt0)-1
+          nClus = nClus + clusterSeg(iFlt)
+          nRead = nRead + 1
+          call CheckDim ( nRead, MAX_FLT, 'MAX_FLT' )
+          readOrder(nRead) = iFlt
+        enddo
+        if ( nClus .ne. 0 .and. nClus .ne. f_num(iFlt0) ) then
+          write (*,'( 2x,''Flt file error: if one segment of a fault system is source type 8, all must be'')')
+          stop 99
+        endif
+        clusterSys(iFlt0) = 0
+        vStart(iFlt0) = 0
+        if ( nClus .eq. 0 ) goto 50
+
+c       One extra source for each segmentation model, with the branches and
+c       weights of the first member
+        clusterSys(iFlt0) = 1
+        vStart(iFlt0) = nFltAll + 1
+        do iSeg=1,nSegModel(iFlt0)
+          nFltAll = nFltAll + 1
+          v = nFltAll
+          call CheckDim ( v, MAX_FLT, 'MAX_FLT' )
+          nWidth(v) = nWidth(i1)
+          nFtype(v) = nFtype(i1)
+          attenType(v) = attenType(i1)
+          al_segwt(v) = 1.
+          do iWidth=1,nWidth(i1)
+            nParamVar(v,iWidth) = nParamVar(i1,iWidth)
+            cumWt_width(v,iWidth) = cumWt_width(i1,iWidth)
+            do i=1,nParamVar(i1,iWidth)
+              cumWt_param(v,iWidth,i) = cumWt_param(i1,iWidth,i)
+            enddo
+          enddo
+          do i=1,nFtype(i1)
+            cumWt_Ftype(v,i) = cumWt_Ftype(i1,i)
+          enddo
+          nRead = nRead + 1
+          call CheckDim ( nRead, MAX_FLT, 'MAX_FLT' )
+          readOrder(nRead) = v
+        enddo
+ 50     continue
+      enddo
 
       return
       end

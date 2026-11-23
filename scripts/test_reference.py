@@ -29,7 +29,8 @@ import pytest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.join(HERE, "..")
-TESTS = ["Reference_Test", "PEER_Verification_Test", "Cluster_Test", "Source_Types_Test"]
+TESTS = ["Reference_Test", "PEER_Verification_Test", "Cluster_Test", "Cluster_Geometries_Test",
+         "Source_Types_Test"]
 
 FRACT_BIN = os.environ.get("FRACT_BIN", os.path.join(ROOT, "build", "Fractiles"))
 HAZ_BIN = os.environ.get("HAZ_BIN")
@@ -78,7 +79,8 @@ def fractile_output_name(folder):
 def read_fractiles(path):
     """Periods (levels, {fractile: values}, mean) and UHS tables of a fractile output."""
     periods, uhs = [], []
-    lines = open(path).read().splitlines()
+    with open(path) as f:
+        lines = f.read().splitlines()
     i = 0
     while i < len(lines):
         line = lines[i]
@@ -121,9 +123,10 @@ def read_out1(path):
 def read_out3_totals(path):
     """The Wt_Total_Events/yr line of each period block of a HAZ out3 file."""
     totals = []
-    for line in open(path):
-        if line.strip().startswith("Wt_Total_Events/yr"):
-            totals.append(np.array([float(x) for x in line.split()[4:]]))
+    with open(path) as f:
+        for line in f:
+            if line.strip().startswith("Wt_Total_Events/yr"):
+                totals.append(np.array([float(x) for x in line.split()[4:]]))
     return totals
 
 
@@ -180,10 +183,10 @@ def test_cluster_two_point_distribution(fractile_runs):
     assert len(uhs) == 2 and all(len(table["rows"]) == 2 for table in uhs)
     curves = []
     for iprob, per in enumerate(periods, 1):
-        # The cluster's curves are in the first member's block; the others are zero
-        c = out1[1, 1, iprob][:, 0, 0, :]
+        # The members' blocks are zero; the cluster's curves follow as source 4
+        c = out1[4, 1, iprob][:, 0, 0, :]
         assert c.shape[0] == 2
-        assert all(np.all(out1[k, 1, iprob] == 0.0) for k in (2, 3))
+        assert all(np.all(out1[k, 1, iprob] == 0.0) for k in (1, 2, 3))
         lo, hi = c.min(axis=0), c.max(axis=0)
         curves.append((lo, hi))
         for p, row in per["rows"].items():
@@ -202,6 +205,63 @@ def test_cluster_two_point_distribution(fractile_runs):
             levels = periods[iprob]["levels"]
             assert row[1] == pytest.approx(loglog_level(levels, lo, table["level"]), rel=1e-3)
             assert row[5] == pytest.approx(loglog_level(levels, hi, table["level"]), rel=1e-3)
+
+
+# Test C of the HAZ cluster tests: branch weights as in HAZ tests/cluster/make_inputs.py
+TC_SEG_WEIGHTS = [round(x * y * z, 6) for x in (0.6, 0.4) for y in (0.7, 0.3) for z in (0.7, 0.3)]
+TC_WIDTH_WEIGHTS = [0.3, 0.5, 0.2]
+TC_GMM_WEIGHTS = [0.5, 0.5]
+TC_FTYPE_WEIGHTS = [0.5, 0.5]
+TC_PARAM_WEIGHTS = [0.25, 0.25, 0.25, 0.25]
+
+
+def quantile(values, weights, q):
+    """Smallest value whose cumulative weight reaches q (q clipped to [0, 1])."""
+    order = np.argsort(values)
+    cum = np.cumsum(np.asarray(weights)[order])
+    k = int(np.searchsorted(cum, min(max(q, 0.0), 1.0) * cum[-1] - 1e-12))
+    return np.asarray(values)[order][min(k, len(order) - 1)]
+
+
+@needs_fract
+def test_cluster_geometries_distribution(fractile_runs):
+    """Eight segmentation models (alternative geometries) and matched branches.
+
+    The hazard is one of 384 branch curves of the cluster (model x width x
+    rate-and-magnitude x mechanism x GMM) with known weights. Each Monte Carlo
+    fractile must lie between the exact quantiles at p -/+ 4 standard errors,
+    and the mean must be within 4 standard errors of the exact mean."""
+    periods, _ = read_fractiles(fractile_runs["Cluster_Geometries_Test"])
+    out1 = read_out1(os.path.join(ROOT, "Cluster_Geometries_Test", "Hazard", "Output", "TC_Cluster_Site1.out1"))
+    with open(os.path.join(fractiles_case("Cluster_Geometries_Test"), "Input", "Run_Fractiles.txt")) as f:
+        n_sample = int(f.read().splitlines()[1].split()[0])
+    n_flt = 6
+    assert len(periods) == 2 and all(len(per["rows"]) == 99 for per in periods)
+    for iprob, per in enumerate(periods, 1):
+        for k in range(1, n_flt + 1):
+            for w in (1, 2, 3):
+                assert np.all(out1[k, w, iprob] == 0.0)
+        curves, weights = [], []
+        for s, ws in enumerate(TC_SEG_WEIGHTS):
+            for w, ww in enumerate(TC_WIDTH_WEIGHTS):
+                block = out1[n_flt + 1 + s, w + 1, iprob]          # (GMM, mechanism, branch, level)
+                assert block.shape[:3] == (2, 2, 4)
+                for a, wa in enumerate(TC_GMM_WEIGHTS):
+                    for f, wf in enumerate(TC_FTYPE_WEIGHTS):
+                        for p, wp in enumerate(TC_PARAM_WEIGHTS):
+                            curves.append(block[a, f, p])
+                            weights.append(ws * ww * wa * wf * wp)
+        curves, weights = np.array(curves), np.array(weights)
+        assert len(curves) == 384 and abs(weights.sum() - 1.0) < 1e-9
+        exact_mean = (weights[:, None] * curves).sum(axis=0)
+        sd = np.sqrt(np.maximum((weights[:, None] * curves ** 2).sum(axis=0) - exact_mean ** 2, 0.0) / n_sample)
+        assert np.all(np.abs(per["mean"] - exact_mean) <= 4.0 * sd + 1e-3 * exact_mean)
+        for p, row in per["rows"].items():
+            d = 4.0 * math.sqrt(p * (1 - p) / n_sample) + 1.0 / n_sample
+            for j in range(curves.shape[1]):
+                lo = quantile(curves[:, j], weights, p - d)
+                hi = quantile(curves[:, j], weights, p + d)
+                assert lo * (1 - 1e-3) <= row[j] <= hi * (1 + 1e-3), (iprob, p, j, lo, row[j], hi)
 
 
 @needs_fract

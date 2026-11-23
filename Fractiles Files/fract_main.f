@@ -36,6 +36,12 @@ c     the maximum dimensions it would need several GB.
       real, allocatable :: Haz(:,:,:,:,:,:)
       integer nHazPC, nHazAtten, nHazWidth, nHazParam, nHazFtype
 
+c     Clustered sequences (source type 8), see Set_Cluster_Sources: the
+c     cluster's curves for each segmentation model are extra sources
+c     nFlt+1 ... nFltAll; readOrder is the order of the sources in out1
+      integer clusterSeg(MAX_FLT), clusterSys(MAX_FLT), vStart(MAX_FLT),
+     1        nFltAll, readOrder(MAX_FLT)
+
 
 *** need to fix: treating all ftype as epistemic
 
@@ -74,7 +80,12 @@ c     Read Fault Data (only if this is the first period)
            call Rd_Fault_Data ( version, nFlt, nFlt0,
      7     cumWt_segModel, cumWt_param, cumWt_width, probAct,
      2     nParamVar, attentype, cumwt_ftype,
-     3     nFtype, nWidth, nSegModel, f_start, f_num, faultFlag, al_segwt)
+     3     nFtype, nWidth, nSegModel, f_start, f_num, faultFlag, al_segwt,
+     4     clusterSeg )
+           call Set_Cluster_Sources ( nFlt, nFlt0, f_start, f_num, nSegModel,
+     1     clusterSeg, nWidth, nParamVar, nFtype, attenType, cumWt_param,
+     2     cumWt_width, cumWt_Ftype, al_segwt, clusterSys, vStart,
+     3     nFltAll, readOrder )
       endif
 
 c     Size the hazard array for this period
@@ -87,7 +98,7 @@ c     Size the hazard array for this period
       nHazWidth = 1
       nHazParam = 1
       nHazFtype = 1
-      do i=1,nFlt
+      do i=1,nFltAll
         nHazWidth = max( nHazWidth, nWidth(i) )
         nHazFtype = max( nHazFtype, nFtype(i) )
         do j=1,nWidth(i)
@@ -95,7 +106,7 @@ c     Size the hazard array for this period
         enddo
       enddo
       if ( allocated(Haz) ) deallocate ( Haz )
-      allocate ( Haz(nHazPC,nHazAtten,nFlt,nHazWidth,nHazParam,nHazFtype) )
+      allocate ( Haz(nHazPC,nHazAtten,nFltAll,nHazWidth,nHazParam,nHazFtype) )
       Haz = 0.
 
 c     Loop Over Number of Sites
@@ -124,9 +135,9 @@ c       Loop over Inten to save memory (read haz at only one intensity value at 
 
          write (*,'( 2x,''reading out1 file for iInten='',i5)') iInten
 
-        call read_Out1 ( nFlt, Haz, nWidth, nGM_Model, attenType,
+        call read_Out1 ( nFltAll, Haz, nWidth, nGM_Model, attenType,
      1       nParamVar, nFtype, iPer, nProb, iInten, nInten, PCflag,
-     2       nHazPC, nHazAtten, nHazWidth, nHazParam, nHazFtype )
+     2       nHazPC, nHazAtten, nHazWidth, nHazParam, nHazFtype, readOrder )
          write (*,'( 2x,''out of read_Out1'')')
 
 c        Monte Carlo Sampling of Hazard
@@ -155,19 +166,27 @@ c         (a source region may include multiple subsources)
 c           Select the seg model for this source region
             call GetRandom1 ( iseed, nSegModel(iFlt0), cumWt_segModel, iflt0, mcSegModel, MAX_FLT, 2 )
 
-            i1 = f_start(iFlt0)
-            i2 = f_start(iFlt0) + f_num(iFLt0) - 1
+            if ( clusterSys(iFlt0) .eq. 1 ) then
+c             Clustered sequence: one source, the cluster's curves for the drawn
+c             segmentation model (its members' out1 blocks hold zeros)
+              i1 = vStart(iFlt0) + mcSegModel - 1
+              i2 = i1
+            else
+              i1 = f_start(iFlt0)
+              i2 = f_start(iFlt0) + f_num(iFLt0) - 1
+            endif
 
             do iflt1=i1,i2
 
 c             set the attenuation type for this fault
               jAttenType = attenType(iflt1)
 
-c             Reset the index to the faults in segment
-              jFlt = iFlt1-i1+1
-
 c             Skip this fault if not included in this seg model
-              if (faultflag(iFlt0,mcSegModel,jFlt) .eq. 0 ) goto 50
+              if ( clusterSys(iFlt0) .eq. 0 ) then
+c               Reset the index to the faults in segment
+                jFlt = iFlt1-i1+1
+                if (faultflag(iFlt0,mcSegModel,jFlt) .eq. 0 ) goto 50
+              endif
 
 c *** fix this - Now treats aleatory ftype variability as epistemic ***
 c             Select the fault mechanism type
@@ -326,7 +345,7 @@ c -------------------------------------------------------------------
 
       subroutine read_Out1 ( nFlt, haz, nWidth, nGM_Model, attenType,
      1           nParamVar, nFtype, iPer, nProb, jInten, nInten, PCflag,
-     2           nHazPC, nHazAtten, nHazWidth, nHazParam, nHazFtype )
+     2           nHazPC, nHazAtten, nHazWidth, nHazParam, nHazFtype, readOrder )
 
 c     Reads the hazard curves at test level jInten of period iPer from out1.
 c     Every block is read with the numbers of GMMs, mechanisms and parameter
@@ -337,7 +356,8 @@ c     the run file and the fault file.
       implicit none
       include 'fract.h'
 
-      integer nHazPC, nHazAtten, nHazWidth, nHazParam, nHazFtype
+      integer nHazPC, nHazAtten, nHazWidth, nHazParam, nHazFtype,
+     1        readOrder(MAX_FLT), iRead
       integer nInten, nFlt, iProb, nAtten1, nWidth1, jFlt,
      1        nParamVar(MAX_FLT,MAX_WIDTH), nWidth(MAX_FLT), nfiles,
      2        nFtype(MAX_FLT), iPer, nProb, nwr, i, j, iFlt, jProb,
@@ -367,12 +387,15 @@ C     Check for version compatibility with hazard code
         stop 99
       endif
 
-c     Read out1 file
-      do iFlt=1,nFlt
+c     Read out1 file. nFlt includes the clusters' extra sources, and
+c     readOrder gives the order of the sources in out1 (a cluster's curves
+c     follow its last member).
+      do iRead=1,nFlt
+       iFlt = readOrder(iRead)
        do iWidth=1,nWidth(iFlt)
         do jProb=1,nProb
 
-          read (nwr,*,err=200) jFlt, jFltWidth, iProb, nAtten1, nWidth1, nFtype1,
+          read (nwr,*,err=200,end=202) jFlt, jFltWidth, iProb, nAtten1, nWidth1, nFtype1,
      1         nParamVar1(iWidth),nInten1
 
 C        Check for Array Dimension of haz Array.
@@ -452,6 +475,11 @@ c                only keep if it is the desired spectral period
       backspace (nwr)
       read (nwr,'( a80)') dummy
       write (*,'( a80)') dummy
+      stop 99
+ 202  write (*,'( 2x,''out1 ends before the block for source'',i5,'', width'',i3,'', period'',i3)')
+     1      iFlt, iWidth, jProb
+      write (*,'( 2x,''A clustered sequence needs out1 from HAZ with its curves after the members'')')
+      write (*,'( 2x,''(convention F3, HAZ 45.4 from November 2026)'')')
       stop 99
  201  write (*,'( 2x,''Error reading haz line in out1'',5i5 )') iflt, iWidth, iProb, iAtten, iFtype, i
       backspace (nwr)
