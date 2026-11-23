@@ -1,0 +1,8 @@
+5431		iseed
+2000		nSample
+1		nPer
+1  1.E-4		nHazLevel, HazLevel
+Fract_SourceTypes.out
+1		Period
+Run_SourceTypes.txt
+SourceTypes_Site1.out1

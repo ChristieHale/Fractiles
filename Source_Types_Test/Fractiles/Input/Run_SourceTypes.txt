@@ -1,0 +1,30 @@
+Source_SourceTypes.txt
+45.4					version of fault file
+-1.0 1.0 -66.0 -64.0  			min max lat long
+200.  200.				maxdist (types 1 and 2)
+Fractiles test: source types 1, 6 and 7
+1  1  					nProb, nAttenType
+0.0  8  0  0				  period, max epsilon, dir flag, PC flag
+12
+0.001  0.01  0.05  0.1  0.15  0.2  0.3  0.4  0.5  0.7  1.0  1.5
+1      			  		  Number of GM Models for Atten Type 1
+51 0.0 0.0 1.0 0.0 0  			  jcalc, const1, const2, wt, SigVaradd, mixflag (Sadigh)
+0  					psCorFlag  (0=no, 1=yes)
+6					Number of deag mag values
+5.0 5.5 6.0 6.5 7.0 7.5		  deag mag values
+5					Number of deag dist values
+0. 20. 40. 100. 200.		  deag dist values
+6					Number of deag eps values
+-10. -1. 0. 1. 2. 10.			  deag eps values
+4					Number of deag dir values
+0.0 0.10 0.40 2.0		  	  deag dir values
+0  					soil amp
+1     					nSites
+-65.000  0.000     760.0  0.0481  0.250  0.6068  0.8 0  (sx, sy, Vs, DVs1.0, DVs1.5, DVs2.5, Vrup, FABA)
+SourceTypes_Site1.out1
+SourceTypes_Site1.out2
+SourceTypes_Site1.out3
+SourceTypes_Site1.out4
+SourceTypes_Site1.out5
+SourceTypes_Site1.out6
+SourceTypes_Site1.out7

@@ -20,7 +20,6 @@ c     compatible with Haz45.4 (and the 45.1 - 45.3 fault file formats)
      2        faultflag(MAX_FLT,MAX_SEGMOD,MAX_SEG), iFract, nPer, jPer, iperc,
      3        PCflag(MAX_PROB)
       real tempx, step, testInten(MAX_INTEN), probAct(MAX_FLT),
-     1     Haz(7,MAX_ATTEN, MAX_FLT, MAX_WIDTH, MAXPARAM, MAX_FTYPE),
      2     al_segwt(MAX_FLT), cumWt_segModel(MAX_FLT,MAX_SEGMOD), ran1,
      3     cumWt_param(MAX_FLT,MAX_WIDTH,MAXPARAM), x, perc(100,MAX_INTEN),
      4     cumWt_Width(MAX_FLT,MAX_WIDTH), cumWt_Ftype(MAX_FLT,MAXPARAM)
@@ -30,6 +29,12 @@ c     compatible with Haz45.4 (and the 45.1 - 45.3 fault file formats)
      3     gasdev
       real*8 sum
       character*80 filein, file1
+
+c     Hazard curves read from out1 for one test level: (PC term, GMM, source,
+c     width branch, parameter branch, mechanism). Sized from the run, since at
+c     the maximum dimensions it would need several GB.
+      real, allocatable :: Haz(:,:,:,:,:,:)
+      integer nHazPC, nHazAtten, nHazWidth, nHazParam, nHazFtype
 
 
 *** need to fix: treating all ftype as epistemic
@@ -72,6 +77,27 @@ c     Read Fault Data (only if this is the first period)
      3     nFtype, nWidth, nSegModel, f_start, f_num, faultFlag, al_segwt)
       endif
 
+c     Size the hazard array for this period
+      nHazPC = 1
+      if ( PCflag(iPer) .eq. 1 ) nHazPC = 7
+      nHazAtten = 1
+      do jj=1,nAttenType
+        nHazAtten = max( nHazAtten, nGM_model(jj) )
+      enddo
+      nHazWidth = 1
+      nHazParam = 1
+      nHazFtype = 1
+      do i=1,nFlt
+        nHazWidth = max( nHazWidth, nWidth(i) )
+        nHazFtype = max( nHazFtype, nFtype(i) )
+        do j=1,nWidth(i)
+          nHazParam = max( nHazParam, nParamVar(i,j) )
+        enddo
+      enddo
+      if ( allocated(Haz) ) deallocate ( Haz )
+      allocate ( Haz(nHazPC,nHazAtten,nFlt,nHazWidth,nHazParam,nHazFtype) )
+      Haz = 0.
+
 c     Loop Over Number of Sites
       nsite = 1
       do 1000 iSite = 1, nSite
@@ -99,7 +125,8 @@ c       Loop over Inten to save memory (read haz at only one intensity value at 
          write (*,'( 2x,''reading out1 file for iInten='',i5)') iInten
 
         call read_Out1 ( nFlt, Haz, nWidth, nGM_Model, attenType,
-     1       nParamVar, nFtype, iPer, nProb, iInten, nInten, PCflag)
+     1       nParamVar, nFtype, iPer, nProb, iInten, nInten, PCflag,
+     2       nHazPC, nHazAtten, nHazWidth, nHazParam, nHazFtype )
          write (*,'( 2x,''out of read_Out1'')')
 
 c        Monte Carlo Sampling of Hazard
@@ -236,13 +263,30 @@ c         Copy sorted hazard to 1-d array
           enddo
 
           testHaz = hazLevel(iHazLevel)
+
+c         A negative UHS value flags a fractile curve that does not cross the
+c         hazard level within the test ground motions: minus the highest test
+c         ground motion if the curve is still above the hazard level there, or
+c         minus the last ground motion with non-zero hazard if the curve drops
+c         to zero before reaching the hazard level. If the curve is already
+c         below the hazard level at the lowest test ground motion, the value is
+c         minus that ground motion.
+          UHS(jPer,iFract,iHazLevel) = -testInten(nInten)
+          if ( hazTotal(1) .lt. testHaz ) then
+            write (*,'( 2x,''warning: the'',i3,''th fractile curve is below the hazard level'',e10.2,
+     1           '' at the lowest ground motion'')') i1, testHaz
+            UHS(jPer,iFract,iHazLevel) = -testInten(1)
+            goto 65
+          endif
 	        do iAmp=2,nInten
 
 c          Check for zero values in hazard curve.
            if (hazTotal(iAmp) .eq. 0. ) then
-            write (*,*) 'warning: Zero Values for hazard curve at desired haz level.'
-            write (*,*) 'Setting UHS to last nonzero value (neg to indicate a problem)'
-            UHS(jPer,iFract,iHazLevel) = -exp(x)
+            write (*,'( 2x,''warning: the'',i3,''th fractile curve is zero at '',f10.4,
+     1           '' g, above the hazard level'',e10.2)') i1, testInten(iAmp), testHaz
+            write (*,*) 'Setting UHS to minus the last non-zero ground motion'
+            UHS(jPer,iFract,iHazLevel) = -testInten(iAmp-1)
+            goto 65
            endif
 
 c          Interpolate the hazard curve.
@@ -281,18 +325,26 @@ c     Write UHS
 c -------------------------------------------------------------------
 
       subroutine read_Out1 ( nFlt, haz, nWidth, nGM_Model, attenType,
-     1           nParamVar, nFtype, iPer, nProb, jInten, nInten, PCflag)
+     1           nParamVar, nFtype, iPer, nProb, jInten, nInten, PCflag,
+     2           nHazPC, nHazAtten, nHazWidth, nHazParam, nHazFtype )
+
+c     Reads the hazard curves at test level jInten of period iPer from out1.
+c     Every block is read with the numbers of GMMs, mechanisms and parameter
+c     branches given in its own header line, so that periods with different
+c     numbers of GMMs are read correctly; for period iPer they must agree with
+c     the run file and the fault file.
 
       implicit none
       include 'fract.h'
 
+      integer nHazPC, nHazAtten, nHazWidth, nHazParam, nHazFtype
       integer nInten, nFlt, iProb, nAtten1, nWidth1, jFlt,
      1        nParamVar(MAX_FLT,MAX_WIDTH), nWidth(MAX_FLT), nfiles,
      2        nFtype(MAX_FLT), iPer, nProb, nwr, i, j, iFlt, jProb,
      3        i1, iAtten, iWidth, iFtype, jInten, jFltWidth, nInten1,
      4        nFtype1, nParamVar1(MAX_WIDTH), nGM_Model(MAX_ATTENTYPE), iPC
       integer attenType(MAX_FLT), PCflag(MAX_PROB)
-      real haz(7,MAX_ATTEN,MAX_FLT,MAX_WIDTH,MAXPARAM,MAX_FTYPE),
+      real haz(nHazPC,nHazAtten,nFlt,nHazWidth,nHazParam,nHazFtype),
      1     temp(MAX_INTEN), version
       character*80 file1, dummy
 
@@ -344,19 +396,41 @@ C        Check for Array Dimension of haz Array.
            write (*,*) 'Change Array Parameter in FRACT.H and recompile.'
            stop 99
          endif
+         if (nInten1 .gt. MAX_INTEN) then
+           write (*,*) 'MAX_INTEN needs to be increased to ', nInten1
+           write (*,*) 'Change Array Parameter in FRACT.H and recompile.'
+           stop 99
+         endif
 
-         do iAtten=1,nGM_model(attenType(iFlt))
-          do iFtype=1,nFtype(iFlt)
-           do i=1,nParamVar(iFlt,iWidth)
+c        The block for the selected period must match the run and fault files
+         if ( iProb .eq. iPer ) then
+           if ( jFlt .ne. iFlt .or. jFltWidth .ne. iWidth .or.
+     1          nAtten1 .ne. nGM_model(attenType(iFlt)) .or.
+     2          nFtype1 .ne. nFtype(iFlt) .or.
+     3          nParamVar1(iWidth) .ne. nParamVar(iFlt,iWidth) .or.
+     4          nInten1 .ne. nInten ) then
+             write (*,'( 2x,''out1 does not match the run and fault files at source'',i5,
+     1             '', width'',i3,'', period'',i3)') iFlt, iWidth, iProb
+             write (*,'( 2x,''out1 (source, width, GMMs, mechanisms, branches, levels):'',6i5)')
+     1             jFlt, jFltWidth, nAtten1, nFtype1, nParamVar1(iWidth), nInten1
+             write (*,'( 2x,''expected:'',39x,6i5)') iFlt, iWidth, nGM_model(attenType(iFlt)),
+     1             nFtype(iFlt), nParamVar(iFlt,iWidth), nInten
+             stop 99
+           endif
+         endif
+
+         do iAtten=1,nAtten1
+          do iFtype=1,nFtype1
+           do i=1,nParamVar1(iWidth)
              if (PCflag(iProb) .eq. 0) then
-               read (nwr,*,err=201) (temp(j),j=1,nInten)
+               read (nwr,*,err=201) (temp(j),j=1,nInten1)
 c              Only keep if it is the desired spectral period
                if ( iProb .eq. iPer) then
                  haz(1,iAtten,iFlt,iWidth,i,iFtype) = temp(jInten)
                endif
              elseif (PCflag(iProb) .eq. 1) then
                do iPC=1,7
-                 read (nwr,*,err=201) (temp(j),j=1,nInten)
+                 read (nwr,*,err=201) (temp(j),j=1,nInten1)
 c                only keep if it is the desired spectral period
                  if ( iProb .eq. iPer) then
                    haz(iPC,iAtten,iFlt,iWidth,i,iFtype) = temp(jInten)

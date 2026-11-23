@@ -114,6 +114,11 @@ C.......Loop over number of individual fault segments....
 c         Read past name of this segment
           read(10,'( a80)') fname
           read (10,*) isourceType, attenType(iFlt), sampleStep, directflag, synflag
+          if ( isourceType .eq. 8 ) then
+            write (*,'( 2x,''Flt file error: source type 8 (clustered sequence) needs the 45.4 fault file format'')')
+            write (*,'( 2x,''From fault segment: '',a80)') fname
+            stop 99
+          endif
 
           write (*,'( 2x,''iFlt'',i5, 2x,a80)') iFlt, fname
 
@@ -151,8 +156,8 @@ c           Read over grid filename...
             read (10,*)
           endif
 
-c         Check for custom fault source
-          if ( isourceType .eq. 5) then
+c         Check for custom fault source (source types 5 and 6)
+          if ( isourceType .eq. 5 .or. isourceType .eq. 6 ) then
             read(10,*) nDownDip, nfp
 c........   Only read in the first downdip case - rest is not needed...
             do ipt=1,nfp
@@ -160,8 +165,8 @@ c........   Only read in the first downdip case - rest is not needed...
             enddo
           endif
 
-c         Read dip Variation
-          if ( isourceType .ne. 5 ) then
+c         Read dip Variation (source types 1 to 4 only, as in HAZ)
+          if ( isourceType .lt. 5 ) then
             read (10,*) n_Dip(iflt)
             call CheckDim ( n_Dip(iflt), MAX_WIDTH, 'MAX_WIDTH ' )
             read (10,*) (x(i),i=1,n_Dip(iflt))
@@ -253,8 +258,8 @@ c         Read past corresponding magnitude parameters.
             read (10,*) x(iRecur), x(iRecur), x(iRecur)
           enddo
 
-c         Read seismogenic thickness
-          if ( isourceType .ne. 5) then
+c         Read seismogenic thickness (source types 1 to 4 only, as in HAZ)
+          if ( isourceType .lt. 5 ) then
             read (10,*) nThick1(iFlt)
             call CheckDim ( nThick1(iFlt), MAX_WIDTH, 'MAX_WIDTH ' )
             read (10,*) (x(i),i=1,nThick1(iFlt))
@@ -502,6 +507,19 @@ c         Read past name of this segment
             read (10,*) isourceType, attenType(iFlt), sampleStep, directflag, synflag
           endif
 
+c         Source type 8 is a member of a clustered earthquake sequence. Its input
+c         is the same as source type 1. HAZ writes the cluster's branch curves in
+c         the first member's out1 block and zeros in the other members' blocks,
+c         so the cluster is sampled as one source.
+          if ( isourceType .eq. 8 ) then
+            if ( version .ne. 45.4 ) then
+              write (*,'( 2x,''Flt file error: source type 8 (clustered sequence) needs the 45.4 fault file format'')')
+              write (*,'( 2x,''From fault segment: '',a80)') fname
+              stop 99
+            endif
+            isourceType = 1
+          endif
+
           write (*,'( 2x,''iFlt'',i5, 2x,a80)') iFlt, fname
 
 c         Read past the synchronous Rupture parameters
@@ -538,8 +556,8 @@ c           Read over grid filename...
             read (10,*)
           endif
 
-c         Check for custom fault source
-          if ( isourceType .eq. 5) then
+c         Check for custom fault source (source types 5 and 6)
+          if ( isourceType .eq. 5 .or. isourceType .eq. 6 ) then
             read(10,*) nDownDip, nfp
 c........   Only read in the first downdip case - rest is not needed...
             do ipt=1,nfp
@@ -547,8 +565,8 @@ c........   Only read in the first downdip case - rest is not needed...
             enddo
           endif
 
-c         Read dip Variation
-          if ( isourceType .ne. 5 ) then
+c         Read dip Variation (source types 1 to 4 only, as in HAZ)
+          if ( isourceType .lt. 5 ) then
             read (10,*) n_Dip(iflt)
             call CheckDim ( n_Dip(iflt), MAX_WIDTH, 'MAX_WIDTH ' )
             read (10,*) (x(i),i=1,n_Dip(iflt))
@@ -640,8 +658,8 @@ c         Read past corresponding magnitude parameters.
             read (10,*) x(iRecur), x(iRecur), x(iRecur)
           enddo
 
-c         Read seismogenic thickness
-          if ( isourceType .ne. 5) then
+c         Read seismogenic thickness (source types 1 to 4 only, as in HAZ)
+          if ( isourceType .lt. 5 ) then
             read (10,*) nThick1(iFlt)
             call CheckDim ( nThick1(iFlt), MAX_WIDTH, 'MAX_WIDTH ' )
             read (10,*) (x(i),i=1,nThick1(iFlt))

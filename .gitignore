@@ -13,3 +13,9 @@ AWE_Preferences.f95
 
 # Ignore Mac OS X system files
 .DS_Store
+# Build directory
+build/
+
+# Python
+__pycache__/
+.pytest_cache/

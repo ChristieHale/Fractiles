@@ -9,6 +9,8 @@ c -------------------------------------------------------------------------
       integer nInten, ntotal, attentype(MAX_FLT), nfiles, PCflag(MAX_PROB),
      1        jCalc(MAX_ATTENTYPE,MAX_ATTEN), nProb, nattentype,
      2        nGM_Model(MAX_ATTENTYPE), j, jj, iprob, iPer, nwr
+      integer nInten1
+      real testInten1(MAX_INTEN)
       real testInten(MAX_INTEN), dummy, specT, dirflag,
      2     checkwt, c1, c2, wtgm(4,MAX_ATTEN), sigtrunc, Varadd,
      4     cumWt_GM(MAX_ATTEN,MAX_ATTEN), SpecT1, version
@@ -56,11 +58,18 @@ c     Number of Spectral Periods and Number of attenuation relations types
       do iprob=1,nProb
 
 C       Read period, maxeps, dir flag, PC flag, and gm intensities
+C       (each period has its own test levels; only the selected period's are kept)
         read (20,*) specT, sigtrunc, dirflag, PCflag(iProb)
-        read (20,*) nInten
-        call CheckDim ( nInten, MAX_INTEN, 'MAX_INTEN' )
+        read (20,*) nInten1
+        call CheckDim ( nInten1, MAX_INTEN, 'MAX_INTEN' )
         backspace (20)
-        read (20,*) nInten, (testInten(j), j=1,nInten)
+        read (20,*) nInten1, (testInten1(j), j=1,nInten1)
+        if ( iper .eq. iProb ) then
+          nInten = nInten1
+          do j=1,nInten1
+            testInten(j) = testInten1(j)
+          enddo
+        endif
 
 
 C       Read in the suite of attenution models and wts for each attentype
