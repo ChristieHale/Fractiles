@@ -822,19 +822,22 @@ c ----------------------------------------------------------------------
      2           cumWt_width, cumWt_Ftype, al_segwt, clusterSys, vStart,
      3           nFltAll, readOrder )
 
-c     Clustered sequences (source type 8). A cluster is a fault system whose
-c     segments are its members. In out1, HAZ writes zeros in the members'
-c     blocks, then, right after the last member, one set of blocks for each
-c     segmentation model s of the fault system, holding the cluster's curve on
-c     every branch for that model. The source number of the set in the block
-c     header is nFlt + 1, nFlt + 2, ... in the order the sets are written.
+c     Clustered sequences (source type 8). The members of a cluster are the
+c     type 8 segments of a fault system (consecutive segments); the system may
+c     also hold ordinary segments, for example an out-of-cluster alternative.
+c     In out1, HAZ writes zeros in the members' blocks, then, right after the
+c     last member, one set of blocks for each segmentation model s of the
+c     fault system, holding the cluster's curve on every branch for that model
+c     (zeros for a model with no member). The source number of the set in the
+c     block header is nFlt + 1, nFlt + 2, ... in the order the sets are written.
 c
 c     This routine numbers those sets as extra sources nFlt+1 ... nFltAll,
 c     gives them the branches and weights of the cluster's first member (every
 c     member has the same branches, matched by index), and sets the order in
-c     which out1 holds the blocks. In the sampling, the cluster is one source:
-c     draw a segmentation model s, then one branch, and add the curve of
-c     source vStart(iFlt0) + s - 1.
+c     which out1 holds the blocks. In the sampling, for a fault system with a
+c     cluster: draw a segmentation model s, add the curve of source
+c     vStart(iFlt0) + s - 1 on one drawn branch, and add the ordinary segments
+c     that s includes as usual.
 
       implicit none
       include 'fract.h'
@@ -846,56 +849,67 @@ c     source vStart(iFlt0) + s - 1.
       real cumWt_param(MAX_FLT,MAX_WIDTH,MAXPARAM), cumWt_width(MAX_FLT,MAX_WIDTH),
      1     cumWt_Ftype(MAX_FLT,MAXPARAM), al_segwt(MAX_FLT)
 
-      integer iFlt0, iFlt, i1, iSeg, v, nRead, iWidth, i, nClus
+      integer iFlt0, iFlt, i1, iSeg, v, nRead, iWidth, i, nClus, iLast
 
       nFltAll = nFlt
       nRead = 0
       do iFlt0=1,nFlt0
         i1 = f_start(iFlt0)
 
-c       A fault system is a cluster if its segments are type 8 (all of them)
+c       The cluster's members: the type 8 segments (consecutive)
         nClus = 0
-        do iFlt=i1,i1+f_num(iFlt0)-1
-          nClus = nClus + clusterSeg(iFlt)
+        iLast = 0
+        do iFlt=f_start(iFlt0),f_start(iFlt0)+f_num(iFlt0)-1
+          if ( clusterSeg(iFlt) .eq. 1 ) then
+            if ( nClus .gt. 0 .and. iLast .ne. iFlt-1 ) then
+              write (*,'( 2x,''Flt file error: the members (source type 8) of a fault system must be consecutive'')')
+              stop 99
+            endif
+            if ( nClus .eq. 0 ) i1 = iFlt
+            nClus = nClus + 1
+            iLast = iFlt
+          endif
+        enddo
+        clusterSys(iFlt0) = 0
+        vStart(iFlt0) = 0
+        if ( nClus .gt. 0 ) then
+          clusterSys(iFlt0) = 1
+          vStart(iFlt0) = nFltAll + 1
+        endif
+
+c       Order in out1: the segments, with the cluster's sets after its last member
+        do iFlt=f_start(iFlt0),f_start(iFlt0)+f_num(iFlt0)-1
           nRead = nRead + 1
           call CheckDim ( nRead, MAX_FLT, 'MAX_FLT' )
           readOrder(nRead) = iFlt
-        enddo
-        if ( nClus .ne. 0 .and. nClus .ne. f_num(iFlt0) ) then
-          write (*,'( 2x,''Flt file error: if one segment of a fault system is source type 8, all must be'')')
-          stop 99
-        endif
-        clusterSys(iFlt0) = 0
-        vStart(iFlt0) = 0
-        if ( nClus .eq. 0 ) goto 50
 
-c       One extra source for each segmentation model, with the branches and
-c       weights of the first member
-        clusterSys(iFlt0) = 1
-        vStart(iFlt0) = nFltAll + 1
-        do iSeg=1,nSegModel(iFlt0)
-          nFltAll = nFltAll + 1
-          v = nFltAll
-          call CheckDim ( v, MAX_FLT, 'MAX_FLT' )
-          nWidth(v) = nWidth(i1)
-          nFtype(v) = nFtype(i1)
-          attenType(v) = attenType(i1)
-          al_segwt(v) = 1.
-          do iWidth=1,nWidth(i1)
-            nParamVar(v,iWidth) = nParamVar(i1,iWidth)
-            cumWt_width(v,iWidth) = cumWt_width(i1,iWidth)
-            do i=1,nParamVar(i1,iWidth)
-              cumWt_param(v,iWidth,i) = cumWt_param(i1,iWidth,i)
+c         After the last member: one extra source for each segmentation model,
+c         with the branches and weights of the first member (i1)
+          if ( iFlt .eq. iLast ) then
+            do iSeg=1,nSegModel(iFlt0)
+              nFltAll = nFltAll + 1
+              v = nFltAll
+              call CheckDim ( v, MAX_FLT, 'MAX_FLT' )
+              nWidth(v) = nWidth(i1)
+              nFtype(v) = nFtype(i1)
+              attenType(v) = attenType(i1)
+              al_segwt(v) = 1.
+              do iWidth=1,nWidth(i1)
+                nParamVar(v,iWidth) = nParamVar(i1,iWidth)
+                cumWt_width(v,iWidth) = cumWt_width(i1,iWidth)
+                do i=1,nParamVar(i1,iWidth)
+                  cumWt_param(v,iWidth,i) = cumWt_param(i1,iWidth,i)
+                enddo
+              enddo
+              do i=1,nFtype(i1)
+                cumWt_Ftype(v,i) = cumWt_Ftype(i1,i)
+              enddo
+              nRead = nRead + 1
+              call CheckDim ( nRead, MAX_FLT, 'MAX_FLT' )
+              readOrder(nRead) = v
             enddo
-          enddo
-          do i=1,nFtype(i1)
-            cumWt_Ftype(v,i) = cumWt_Ftype(i1,i)
-          enddo
-          nRead = nRead + 1
-          call CheckDim ( nRead, MAX_FLT, 'MAX_FLT' )
-          readOrder(nRead) = v
+          endif
         enddo
- 50     continue
       enddo
 
       return

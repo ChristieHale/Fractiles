@@ -30,7 +30,7 @@ import pytest
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.join(HERE, "..")
 TESTS = ["Reference_Test", "PEER_Verification_Test", "Cluster_Test", "Cluster_Geometries_Test",
-         "Source_Types_Test"]
+         "Cluster_InOut_Test", "Source_Types_Test"]
 
 FRACT_BIN = os.environ.get("FRACT_BIN", os.path.join(ROOT, "build", "Fractiles"))
 HAZ_BIN = os.environ.get("HAZ_BIN")
@@ -237,22 +237,29 @@ def test_cluster_geometries_distribution(fractile_runs):
         n_sample = int(f.read().splitlines()[1].split()[0])
     n_flt = 6
     assert len(periods) == 2 and all(len(per["rows"]) == 99 for per in periods)
-    for iprob, per in enumerate(periods, 1):
-        for k in range(1, n_flt + 1):
-            for w in (1, 2, 3):
-                assert np.all(out1[k, w, iprob] == 0.0)
+    outcomes = []
+    for iprob in (1, 2):
         curves, weights = [], []
         for s, ws in enumerate(TC_SEG_WEIGHTS):
             for w, ww in enumerate(TC_WIDTH_WEIGHTS):
+                for k in range(1, n_flt + 1):
+                    assert np.all(out1[k, w + 1, iprob] == 0.0)
                 block = out1[n_flt + 1 + s, w + 1, iprob]          # (GMM, mechanism, branch, level)
                 assert block.shape[:3] == (2, 2, 4)
-                for a, wa in enumerate(TC_GMM_WEIGHTS):
-                    for f, wf in enumerate(TC_FTYPE_WEIGHTS):
-                        for p, wp in enumerate(TC_PARAM_WEIGHTS):
-                            curves.append(block[a, f, p])
-                            weights.append(ws * ww * wa * wf * wp)
-        curves, weights = np.array(curves), np.array(weights)
-        assert len(curves) == 384 and abs(weights.sum() - 1.0) < 1e-9
+                c, wt = branch_outcomes(block, ws * ww)
+                curves += c
+                weights += wt
+        assert len(curves) == 384
+        outcomes.append((np.array(curves), np.array(weights)))
+    check_exact_distribution(periods, outcomes, n_sample)
+
+
+def check_exact_distribution(periods, outcomes, n_sample):
+    """Fractiles within the exact quantiles at p -/+ 4 standard errors, and the
+    mean within 4 standard errors of the exact mean. outcomes (one per period)
+    is (curves (n, nInten), weights (n))."""
+    for iprob, (per, (curves, weights)) in enumerate(zip(periods, outcomes), 1):
+        assert abs(weights.sum() - 1.0) < 1e-9
         exact_mean = (weights[:, None] * curves).sum(axis=0)
         sd = np.sqrt(np.maximum((weights[:, None] * curves ** 2).sum(axis=0) - exact_mean ** 2, 0.0) / n_sample)
         assert np.all(np.abs(per["mean"] - exact_mean) <= 4.0 * sd + 1e-3 * exact_mean)
@@ -262,6 +269,55 @@ def test_cluster_geometries_distribution(fractile_runs):
                 lo = quantile(curves[:, j], weights, p - d)
                 hi = quantile(curves[:, j], weights, p + d)
                 assert lo * (1 - 1e-3) <= row[j] <= hi * (1 + 1e-3), (iprob, p, j, lo, row[j], hi)
+
+
+def branch_outcomes(block, weight):
+    """Curves and weights of every branch (GMM, mechanism, rate-and-magnitude) of a block."""
+    curves, weights = [], []
+    for a, wa in enumerate(TC_GMM_WEIGHTS):
+        for f, wf in enumerate(TC_FTYPE_WEIGHTS):
+            for p, wp in enumerate(TC_PARAM_WEIGHTS):
+                curves.append(block[a, f, p])
+                weights.append(weight * wa * wf * wp)
+    return curves, weights
+
+
+@needs_fract
+def test_cluster_inout_distribution(fractile_runs):
+    """In- and out-of-cluster branches in one fault system (test D): each
+    sample is the cluster for one of the eight in-cluster models, the ordinary
+    RFT segment for one of the two RFT-only models, or zero ('All Out')."""
+    periods, _ = read_fractiles(fractile_runs["Cluster_InOut_Test"])
+    out1 = read_out1(os.path.join(ROOT, "Cluster_InOut_Test", "Hazard", "Output", "TD_Cluster_Site1.out1"))
+    with open(os.path.join(fractiles_case("Cluster_InOut_Test"), "Input", "Run_Fractiles.txt")) as f:
+        n_sample = int(f.read().splitlines()[1].split()[0])
+    n_flt = 8
+    in_weights = [0.9 * w for w in TC_SEG_WEIGHTS]
+    assert len(periods) == 2 and all(len(per["rows"]) == 99 for per in periods)
+    outcomes = []
+    for iprob in (1, 2):
+        curves, weights = [], []
+        for w, ww in enumerate(TC_WIDTH_WEIGHTS):
+            for k in range(1, 7):
+                assert np.all(out1[k, w + 1, iprob] == 0.0)
+            for s, ws in enumerate(in_weights):
+                c, wt = branch_outcomes(out1[n_flt + 1 + s, w + 1, iprob], ws * ww)
+                curves += c
+                weights += wt
+            for s in (8, 9, 10):
+                assert np.all(out1[n_flt + 1 + s, w + 1, iprob] == 0.0)
+            for k, wk in ((7, 0.035), (8, 0.015)):
+                c, wt = branch_outcomes(out1[k, w + 1, iprob], wk * ww)
+                curves += c
+                weights += wt
+        n_levels = len(curves[0])
+        curves.append(np.zeros(n_levels))
+        weights.append(0.05)
+        outcomes.append((np.array(curves), np.array(weights)))
+    # Below the 'All Out' weight every fractile is zero
+    for per in periods:
+        assert all(np.all(per["rows"][p] == 0.0) for p in (0.01, 0.02, 0.03, 0.04))
+    check_exact_distribution(periods, outcomes, n_sample)
 
 
 @needs_fract

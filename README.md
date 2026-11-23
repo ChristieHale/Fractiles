@@ -38,10 +38,16 @@ alternative geometries), numbered after the last source. The program samples
 the cluster as one source: it draws a segmentation model and one branch (the
 members' branches are matched by index), and adds that curve.
 
+A fault system may also hold ordinary segments besides the members (for
+example an out-of-cluster alternative), and a segmentation model may include
+members, ordinary segments, both or nothing. For such a system the program
+draws a model, adds the cluster's curve for it (zero if it includes no
+member), and adds the ordinary segments it includes as usual.
+
 ## Tests
 
 `Reference_Test`, `PEER_Verification_Test`, `Cluster_Test`,
-`Cluster_Geometries_Test` and `Source_Types_Test` each hold a Hazard case (HAZ inputs and outputs) and a
+`Cluster_Geometries_Test`, `Cluster_InOut_Test` and `Source_Types_Test` each hold a Hazard case (HAZ inputs and outputs) and a
 Fractiles case. From `scripts/`:
 
 ```

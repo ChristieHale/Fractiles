@@ -12,4 +12,4 @@ c     Set array dimensions
      1            MAX_PROB=16, MAX_DIP=5, MAXPARAM=300,
      2            MAX_N1=220, MAX_N2=6, MAX_Files=3,
      3            MAX_WIDTH=15, MAX_SAMPLE=110000, MAX_FTYPE=3,
-     4            MAX_ATTEN=100, MAX_ATTENTYPE=2, MAX_SEGMOD=100 )
+     4            MAX_ATTEN=120, MAX_ATTENTYPE=2, MAX_SEGMOD=100 )

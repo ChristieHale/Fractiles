@@ -40,7 +40,7 @@ c     Clustered sequences (source type 8), see Set_Cluster_Sources: the
 c     cluster's curves for each segmentation model are extra sources
 c     nFlt+1 ... nFltAll; readOrder is the order of the sources in out1
       integer clusterSeg(MAX_FLT), clusterSys(MAX_FLT), vStart(MAX_FLT),
-     1        nFltAll, readOrder(MAX_FLT)
+     1        nFltAll, readOrder(MAX_FLT), iFltLoop
 
 
 *** need to fix: treating all ftype as epistemic
@@ -166,27 +166,28 @@ c         (a source region may include multiple subsources)
 c           Select the seg model for this source region
             call GetRandom1 ( iseed, nSegModel(iFlt0), cumWt_segModel, iflt0, mcSegModel, MAX_FLT, 2 )
 
-            if ( clusterSys(iFlt0) .eq. 1 ) then
-c             Clustered sequence: one source, the cluster's curves for the drawn
-c             segmentation model (its members' out1 blocks hold zeros)
-              i1 = vStart(iFlt0) + mcSegModel - 1
-              i2 = i1
-            else
-              i1 = f_start(iFlt0)
-              i2 = f_start(iFlt0) + f_num(iFLt0) - 1
-            endif
+            i1 = f_start(iFlt0)
+            i2 = f_start(iFlt0) + f_num(iFLt0) - 1
+c           A fault system with a clustered sequence has one more source after
+c           its segments: the cluster's curves for the drawn segmentation model
+            if ( clusterSys(iFlt0) .eq. 1 ) i2 = i2 + 1
 
-            do iflt1=i1,i2
+            do iFltLoop=i1,i2
 
-c             set the attenuation type for this fault
-              jAttenType = attenType(iflt1)
-
-c             Skip this fault if not included in this seg model
-              if ( clusterSys(iFlt0) .eq. 0 ) then
-c               Reset the index to the faults in segment
+              if ( clusterSys(iFlt0) .eq. 1 .and. iFltLoop .eq. i2 ) then
+c               The cluster (zeros if the drawn model includes no member)
+                iFlt1 = vStart(iFlt0) + mcSegModel - 1
+              else
+                iFlt1 = iFltLoop
+c               A member's out1 blocks hold zeros: the cluster is added above
+                if ( clusterSeg(iFlt1) .eq. 1 ) goto 50
+c               Skip this fault if not included in this seg model
                 jFlt = iFlt1-i1+1
                 if (faultflag(iFlt0,mcSegModel,jFlt) .eq. 0 ) goto 50
               endif
+
+c             set the attenuation type for this fault
+              jAttenType = attenType(iflt1)
 
 c *** fix this - Now treats aleatory ftype variability as epistemic ***
 c             Select the fault mechanism type
